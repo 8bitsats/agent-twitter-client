@@ -1,31 +1,34 @@
-// Declare the types for our custom global properties
-declare global {
-  var PLATFORM_NODE: boolean;
-  var PLATFORM_NODE_JEST: boolean;
-}
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
 
-// Define platform constants before imports
-globalThis.PLATFORM_NODE = typeof process !== 'undefined' && (
+import { ArtGenerator } from './art-generator';
+import { MentionMonitor } from './mention-monitor';
+// Your existing imports
+import { Scraper } from './scraper';
+import {
+  Photo,
+  Tweet,
+} from './tweets';
+
+// Declare the types for our custom global properties
+// Define platform constants
+const PLATFORM_NODE = typeof process !== 'undefined' && (
   // Node.js check
   (process.versions?.node != null) ||
   // Bun check
   (process.versions?.bun != null)
 );
-globalThis.PLATFORM_NODE_JEST = false;
-
-// Your existing imports
-import { Scraper } from './scraper';
-import { Photo, Tweet } from './tweets';
-import fs from 'fs';
-import path from 'path';
-import readline from 'readline';
-import dotenv from 'dotenv';  
+const PLATFORM_NODE_JEST = false;
 
 // Load environment variables from .env file
 dotenv.config();
 
-// Create a new Scraper instance
+// Create instances
 const scraper = new Scraper();
+const artGenerator = new ArtGenerator(process.env.OPENAI_API_KEY!);
+const mentionMonitor = new MentionMonitor(scraper, artGenerator);
 
 // Create readline interface for CLI
 const rl = readline.createInterface({
@@ -70,7 +73,17 @@ async function loadCookies() {
     const cookiesArray = JSON.parse(cookiesData);
 
     // Map cookies to the correct format (strings)
-    const cookieStrings = cookiesArray.map((cookie: any) => {
+    interface Cookie {
+      key: string;
+      value: string;
+      domain: string;
+      path: string;
+      secure: boolean;
+      httpOnly: boolean;
+      sameSite?: string;
+    }
+    
+    const cookieStrings = cookiesArray.map((cookie: Cookie) => {
       return `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${cookie.path}; ${
         cookie.secure ? 'Secure' : ''
       }; ${cookie.httpOnly ? 'HttpOnly' : ''}; SameSite=${
@@ -299,7 +312,7 @@ async function executeCommand(commandLine: string) {
       break;
     }
 
-    case 'get-tweets':
+    case 'get-tweets': {
       await ensureAuthenticated();
       const username = args[0];
       if (!username) {
@@ -320,6 +333,7 @@ async function executeCommand(commandLine: string) {
         }
       }
       break;
+    }
 
     case 'get-replies': {
       await ensureAuthenticated();
@@ -336,7 +350,7 @@ async function executeCommand(commandLine: string) {
       break;
     }
 
-    case 'reply-to-tweet':
+    case 'reply-to-tweet': {
       await ensureAuthenticated();
       const replyTweetId = args[0];
       const replyText = args.slice(1).join(' ');
@@ -346,6 +360,7 @@ async function executeCommand(commandLine: string) {
         await replyToTweet(replyTweetId, replyText);
       }
       break;
+    }
 
     case 'get-mentions':
       await ensureAuthenticated();
@@ -397,6 +412,10 @@ async function executeCommand(commandLine: string) {
       console.log('  like <tweetId>            - Like a tweet by its ID');
       console.log('  retweet <tweetId>         - Retweet a tweet by its ID');
       console.log('  follow <username>         - Follow a user by their username');
+      console.log('\nAI Art Generation Commands:');
+      console.log('  generate-art <prompt>     - Generate art from a text prompt and tweet it');
+      console.log('  start-monitor            - Start monitoring mentions for #generateart requests');
+      console.log('  stop-monitor             - Stop monitoring mentions');
       break;
 
     case 'exit':
@@ -438,7 +457,7 @@ async function executeCommand(commandLine: string) {
       break;
     }
 
-    case 'like':
+    case 'like': {
       await ensureAuthenticated();
       const tweetId = args[0];
       if (!tweetId) {
@@ -453,8 +472,9 @@ async function executeCommand(commandLine: string) {
         }
       }
       break;
+    }
 
-    case 'retweet':
+    case 'retweet': {
       await ensureAuthenticated();
       const retweetId = args[0];
       if (!retweetId) {
@@ -469,8 +489,9 @@ async function executeCommand(commandLine: string) {
         }
       }
       break;
+    }
 
-    case 'follow':
+    case 'follow': {
       await ensureAuthenticated();
       const usernameToFollow = args[0];
       if (!usernameToFollow) {
@@ -484,6 +505,34 @@ async function executeCommand(commandLine: string) {
           console.error('Error following user:', error);
         }
       }
+      break;
+    }
+
+    case 'generate-art': {
+      await ensureAuthenticated();
+      const prompt = args.join(' ');
+      if (!prompt) {
+        console.log('Please provide a prompt for art generation.');
+      } else {
+        try {
+          console.log('Generating art...');
+          const imagePath = await artGenerator.generateArt(prompt);
+          console.log('Art generated successfully, tweeting...');
+          await sendTweetCommand('🎨 Generated Art\nPrompt: ' + prompt, [imagePath]);
+        } catch (error) {
+          console.error('Error generating art:', error);
+        }
+      }
+      break;
+    }
+
+    case 'start-monitor':
+      await ensureAuthenticated();
+      await mentionMonitor.start();
+      break;
+
+    case 'stop-monitor':
+      mentionMonitor.stop();
       break;
 
     default:
