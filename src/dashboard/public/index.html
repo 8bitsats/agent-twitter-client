@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">AI Agent Interaction Dashboard</h1>
+        
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Engagement Stats</h2>
+                <div id="engagementStats" class="space-y-2">
+                    <p>Average Likes: <span id="avgLikes">Loading...</span></p>
+                    <p>Average Retweets: <span id="avgRetweets">Loading...</span></p>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Top Topics</h2>
+                <div id="topTopics" class="space-y-2">Loading...</div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Latest GitHub Updates</h2>
+                <div id="githubUpdates" class="space-y-2">Loading...</div>
+            </div>
+        </div>
+        
+        <!-- Interaction Timeline -->
+        <div class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold mb-4">Recent Interactions</h2>
+            <div id="interactionTimeline" class="space-y-4">Loading...</div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Engagement Over Time</h2>
+                <canvas id="engagementChart"></canvas>
+            </div>
+            
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-xl font-semibold mb-4">Topic Distribution</h2>
+                <canvas id="topicChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Fetch and display engagement stats
+        async function fetchStats() {
+            try {
+                const response = await fetch('/api/stats/aixbt_agent');
+                const stats = await response.json();
+                
+                document.getElementById('avgLikes').textContent = Math.round(stats.avgLikes);
+                document.getElementById('avgRetweets').textContent = Math.round(stats.avgRetweets);
+                
+                // Update topic chart
+                new Chart(document.getElementById('topicChart'), {
+                    type: 'pie',
+                    data: {
+                        labels: stats.topTopics,
+                        datasets: [{
+                            data: stats.topTopics.map(() => 1), // Equal distribution for now
+                            backgroundColor: [
+                                '#FF6384',
+                                '#36A2EB',
+                                '#FFCE56',
+                                '#4BC0C0',
+                                '#9966FF'
+                            ]
+                        }]
+                    }
+                });
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        // Fetch and display GitHub updates
+        async function fetchGithubUpdates() {
+            try {
+                const response = await fetch('/api/github/updates');
+                const updates = await response.json();
+                
+                const updatesHtml = updates.map(update => `
+                    <div class="border-l-4 border-blue-500 pl-4">
+                        <p class="font-medium">${update.message}</p>
+                        <p class="text-sm text-gray-600">
+                            By ${update.author} on ${new Date(update.date).toLocaleDateString()}
+                        </p>
+                    </div>
+                `).join('');
+                
+                document.getElementById('githubUpdates').innerHTML = updatesHtml;
+            } catch (error) {
+                console.error('Error fetching GitHub updates:', error);
+            }
+        }
+
+        // Fetch and display interactions
+        async function fetchInteractions() {
+            try {
+                const response = await fetch('/api/interactions');
+                const interactions = await response.json();
+                
+                const timelineHtml = interactions.map(tweet => `
+                    <div class="border-l-4 border-green-500 pl-4">
+                        <p class="font-medium">${tweet.text}</p>
+                        <p class="text-sm text-gray-600 mt-1">Generated Reply:</p>
+                        <p class="text-sm">${tweet.replyContent}</p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            ${new Date(tweet.timestamp).toLocaleString()}
+                        </p>
+                    </div>
+                `).join('');
+                
+                document.getElementById('interactionTimeline').innerHTML = timelineHtml;
+                
+                // Update engagement chart
+                new Chart(document.getElementById('engagementChart'), {
+                    type: 'line',
+                    data: {
+                        labels: interactions.map(t => new Date(t.timestamp).toLocaleDateString()),
+                        datasets: [{
+                            label: 'Interactions',
+                            data: interactions.map((_, i) => i + 1),
+                            borderColor: '#4BC0C0',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error fetching interactions:', error);
+            }
+        }
+
+        // Initial load
+        fetchStats();
+        fetchGithubUpdates();
+        fetchInteractions();
+
+        // Refresh data every 5 minutes
+        setInterval(() => {
+            fetchStats();
+            fetchGithubUpdates();
+            fetchInteractions();
+        }, 300000);
+    </script>
+</body>
+</html>

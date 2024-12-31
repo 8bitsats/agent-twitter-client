@@ -3,7 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 
+import { AgentMonitor } from './agent-monitor';
 import { ArtGenerator } from './art-generator';
+import { DashboardServer } from './dashboard/server';
+import { DataIndexer } from './data-indexer';
 import { MentionMonitor } from './mention-monitor';
 // Your existing imports
 import { Scraper } from './scraper';
@@ -12,23 +15,16 @@ import {
   Tweet,
 } from './tweets';
 
-// Declare the types for our custom global properties
-// Define platform constants
-const PLATFORM_NODE = typeof process !== 'undefined' && (
-  // Node.js check
-  (process.versions?.node != null) ||
-  // Bun check
-  (process.versions?.bun != null)
-);
-const PLATFORM_NODE_JEST = false;
-
 // Load environment variables from .env file
 dotenv.config();
 
 // Create instances
 const scraper = new Scraper();
 const artGenerator = new ArtGenerator(process.env.OPENAI_API_KEY!);
+const dataIndexer = new DataIndexer(scraper);
 const mentionMonitor = new MentionMonitor(scraper, artGenerator);
+const agentMonitor = new AgentMonitor(scraper, dataIndexer);
+const dashboardServer = new DashboardServer(3000, dataIndexer, scraper);
 
 // Create readline interface for CLI
 const rl = readline.createInterface({
@@ -416,6 +412,10 @@ async function executeCommand(commandLine: string) {
       console.log('  generate-art <prompt>     - Generate art from a text prompt and tweet it');
       console.log('  start-monitor            - Start monitoring mentions for #generateart requests');
       console.log('  stop-monitor             - Stop monitoring mentions');
+      console.log('\nAgent Interaction Commands:');
+      console.log('  start-agent-monitor      - Start monitoring and auto-replying to @aixbt_agent');
+      console.log('  stop-agent-monitor       - Stop monitoring @aixbt_agent');
+      console.log('  start-dashboard          - Start the analytics dashboard server');
       break;
 
     case 'exit':
@@ -533,6 +533,20 @@ async function executeCommand(commandLine: string) {
 
     case 'stop-monitor':
       mentionMonitor.stop();
+      break;
+
+    case 'start-agent-monitor':
+      await ensureAuthenticated();
+      await agentMonitor.start();
+      break;
+
+    case 'stop-agent-monitor':
+      agentMonitor.stop();
+      break;
+
+    case 'start-dashboard':
+      dashboardServer.start();
+      console.log('Dashboard available at http://localhost:3000');
       break;
 
     default:
